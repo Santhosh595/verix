@@ -5,6 +5,10 @@ prompt/TASK_BRIEF.md §4:
 
     vision evidence > conversation scope > evidence-requirements gate
     > history (context only, never overriding clear visual evidence)
+
+Key design: claim_status_justification explicitly shows conflict resolution
+between vision, claim text, and history — demonstrating "images are ground
+truth" rather than just asserting it.
 """
 
 import logging
@@ -31,10 +35,12 @@ class Decision:
     claim_status_justification: str
     supporting_image_ids: str   # ';'-joined, or "none"
     valid_image: str            # "true" / "false"
+    valid_image_reason: str     # explanation for valid_image decision
     severity: str
     risk_flags: str             # ';'-joined, or "none"
     evidence_standard_met: str  # "true" / "false"
     evidence_standard_met_reason: str
+    confidence: str             # "high" / "medium" / "low" — self-reported
 
 
 def _aggregate_severities(findings: list) -> str:
@@ -92,6 +98,109 @@ def _find_supporting_images(
     return supporting
 
 
+def _assess_confidence(
+    findings: list,
+    claim_status: str,
+    evidence_standard_met: bool,
+    risk_flags: str,
+) -> str:
+    """
+    Self-reported confidence based on signal quality.
+    - high: clean images, vision agrees with evidence, no risk flags
+     - medium: some quality issues or partial mismatch
+     - low: poor quality, ambiguous vision, or history risk flags present
+    """
+    if not evidence_standard_met:
+        return "low"
+
+    # Check for quality issues
+    has_quality_issues = any(
+        {"blurry_image", "cropped_or_obstructed", "low_light_or_glare", "wrong_angle"} & set(f.quality_notes)
+        for f in findings
+    )
+    if has_quality_issues:
+        return "medium"
+
+    # Check for risk flags
+    active_risk_flags = risk_flags.split(";") if risk_flags and risk_flags != "none" else []
+    if "user_history_risk" in active_risk_flags or "manual_review_required" in active_risk_flags:
+        return "medium"
+
+    # Check for ambiguity in findings
+    issue_types_seen = set(f.issue_type for f in findings if f.issue_type != "unknown")
+    if len(issue_types_seen) > 1:
+        return "medium"
+
+    # Check confidence spread
+    avg_confidence = sum(f.confidence for f in findings) / max(len(findings), 1)
+    if avg_confidence < 0.5:
+        return "low"
+
+    return "high"
+
+
+def _build_justification(
+    claim_status: str,
+    decision: dict,
+    parsed_claim,
+    image_findings: list,
+    evidence_result,
+    risk_flags: str,
+    user_history_row: dict | None,
+) -> str:
+    """
+    Build a justification that explicitly shows conflict resolution.
+    Format: "[Vision evidence]. [Claim text context]. [Evidence gate]. [History context]."
+    """
+    parts: list[str] = []
+
+    # 1. Vision evidence (ground truth)
+    vision_issue = decision["vision_issue"]
+    vision_part = decision["vision_part"]
+    n_images = decision["n_images"]
+    n_clear = decision["n_clear_images"]
+
+    if claim_status == "supported":
+        supporting = decision["supporting_ids"]
+        img_ref = ";".join(supporting) if supporting else "images"
+        parts.append(
+            f"Vision evidence ({n_clear}/{n_images} images clear): shows {vision_issue} on {vision_part} in {img_ref}."
+        )
+    elif claim_status == "contradicted":
+        parts.append(
+            f"Vision evidence ({n_clear}/{n_images} images clear): shows {vision_issue} on {vision_part}, which contradicts the claim."
+        )
+    else:
+        parts.append(
+            f"Vision evidence ({n_clear}/{n_images} images clear): {vision_issue} on {vision_part} — insufficient for definitive determination."
+        )
+
+    # 2. Claim text context
+    if parsed_claim and parsed_claim.claimed_issue_type_guess:
+        parts.append(
+            f"User claim: '{parsed_claim.claimed_issue_type_guess} on {parsed_claim.claimed_object_part_guess or 'unspecified'}'. "
+            f"Vision {'supports' if claim_status == 'supported' else 'contradicts' if claim_status == 'contradicted' else 'is ambiguous relative to'} the claim."
+        )
+    elif parsed_claim:
+        parts.append(f"User claim: '{parsed_claim.claimed_issue_summary[:80]}...' (text-based extraction).")
+
+    # 3. Evidence gate
+    if evidence_result.evidence_standard_met:
+        parts.append(f"Evidence standard met: {evidence_result.evidence_standard_met_reason[:60]}")
+    else:
+        parts.append(f"Evidence standard NOT met: {evidence_result.evidence_standard_met_reason[:60]}")
+
+    # 4. History context (explicitly state it did NOT override)
+    active_flags = risk_flags.split(";") if risk_flags and risk_flags != "none" else []
+    if active_flags:
+        parts.append(
+            f"Risk flags: {', '.join(active_flags)}. "
+            f"History context noted but did not override visual evidence per decision hierarchy."
+        )
+
+    return " | ".join(parts)
+
+
 def decide(
     parsed_claim,
     image_findings: list,
@@ -109,29 +218,37 @@ def decide(
 
     # --- Step 1: Evidence gate ---
     if not evidence_result.evidence_standard_met:
+        vision_issue = _majority_issue(image_findings)
+        vision_part = _majority_part(image_findings)
+        n_clear = sum(1 for f in image_findings if "unreadable" not in f.quality_notes and "blurry_image" not in f.quality_notes)
+        n_total = len(image_findings)
+
+        valid_image = "true" if n_clear > 0 else "false"
+        valid_image_reason = f"{n_clear}/{n_total} images usable" if n_clear > 0 else "All images unreadable or too blurry"
+
         return Decision(
-            issue_type=_majority_issue(image_findings),
-            object_part=_majority_part(image_findings),
+            issue_type=vision_issue,
+            object_part=vision_part,
             claim_status="not_enough_information",
             claim_status_justification=(
-                f"Insufficient image evidence to evaluate the claim. "
-                f"Reason: {evidence_result.evidence_standard_met_reason}"
+                f"Evidence standard not met: {evidence_result.evidence_standard_met_reason}. "
+                f"Cannot evaluate claim due to insufficient image evidence."
             ),
             supporting_image_ids="none",
-            valid_image="false" if all(
-                "unreadable" in f.quality_notes for f in image_findings
-            ) else "true",
+            valid_image=valid_image,
+            valid_image_reason=valid_image_reason,
             severity="unknown",
             risk_flags=risk_flags,
             evidence_standard_met="false",
             evidence_standard_met_reason=evidence_result.evidence_standard_met_reason,
+            confidence="low",
         )
 
     # --- Step 2: All images invalid ---
-    valid_image = "true" if any(
-        "unreadable" not in f.quality_notes and "blurry_image" not in f.quality_notes
-        for f in image_findings
-    ) else "false"
+    n_clear = sum(1 for f in image_findings if "unreadable" not in f.quality_notes and "blurry_image" not in f.quality_notes)
+    n_total = len(image_findings)
+    valid_image = "true" if n_clear > 0 else "false"
+    valid_image_reason = f"{n_clear}/{n_total} images usable" if n_clear > 0 else "All images unreadable or too blurry"
 
     if valid_image == "false":
         return Decision(
@@ -139,14 +256,17 @@ def decide(
             object_part="unknown",
             claim_status="not_enough_information",
             claim_status_justification=(
-                "Images are present but all are unreadable or too blurry to assess."
+                f"Images present but all are unreadable or too blurry to assess. "
+                f"Evidence standard met but image quality insufficient."
             ),
             supporting_image_ids="none",
             valid_image="false",
+            valid_image_reason=valid_image_reason,
             severity="unknown",
             risk_flags=risk_flags,
             evidence_standard_met="true",
             evidence_standard_met_reason=evidence_result.evidence_standard_met_reason,
+            confidence="low",
         )
 
     # --- Step 3: Compare vision vs claim ---
@@ -191,33 +311,31 @@ def decide(
         # No clear signal either way
         claim_status = "not_enough_information"
 
-    # --- Step 4: Build justification ---
+    # --- Step 4: Build decision dict for justification ---
     supporting_ids = _find_supporting_images(
         image_findings, claim_status, claimed_issue, claimed_part
     )
 
-    if claim_status == "supported":
-        justification = (
-            f"Image(s) {';'.join(supporting_ids)} show {vision_issue} on the {vision_part}, "
-            f"consistent with the user's claim."
-        )
-    elif claim_status == "contradicted":
-        justification = (
-            f"Image(s) {';'.join(supporting_ids) if supporting_ids else 'submitted'} show "
-            f"{vision_issue} on the {vision_part}, which does not match the claimed "
-            f"{claimed_issue or 'issue'} on the {claimed_part or 'part'}."
-        )
-    else:
-        justification = (
-            f"Image evidence is insufficient for a definitive determination. "
-            f"Vision model found {vision_issue} on {vision_part}; "
-            f"claimed was {claimed_issue or 'unspecified'} on {claimed_part or 'unspecified'}."
-        )
+    decision_dict = {
+        "vision_issue": vision_issue,
+        "vision_part": vision_part,
+        "n_images": n_total,
+        "n_clear_images": n_clear,
+        "supporting_ids": supporting_ids,
+    }
 
-    # --- Step 5: History may add manual_review_required but not flip status ---
+    # --- Step 5: Build justification with conflict resolution transparency ---
+    justification = _build_justification(
+        claim_status, decision_dict, parsed_claim,
+        image_findings, evidence_result, risk_flags, user_history_row
+    )
+
+    # --- Step 6: History may add manual_review_required but not flip status ---
     if "manual_review_required" in risk_flag_set and claim_status != "not_enough_information":
-        # Keep the status but note the need for review in justification
-        justification += " Manual review recommended due to user history risk."
+        justification += " Manual review recommended due to user history risk, but visual evidence takes precedence per hierarchy."
+
+    # --- Step 7: Confidence assessment ---
+    confidence = _assess_confidence(image_findings, claim_status, evidence_result.evidence_standard_met, risk_flags)
 
     return Decision(
         issue_type=vision_issue,
@@ -226,10 +344,12 @@ def decide(
         claim_status_justification=justification,
         supporting_image_ids=";".join(supporting_ids) if supporting_ids else "none",
         valid_image=valid_image,
+        valid_image_reason=valid_image_reason,
         severity=severity,
         risk_flags=risk_flags,
         evidence_standard_met="true" if evidence_result.evidence_standard_met else "false",
         evidence_standard_met_reason=evidence_result.evidence_standard_met_reason,
+        confidence=confidence,
     )
 
 

@@ -21,6 +21,8 @@ OUTPUT_COLUMNS = [
     "claim_status_justification",
     "supporting_image_ids",
     "valid_image",
+    "valid_image_reason",
+    "confidence",
     "severity",
 ]
 

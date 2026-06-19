@@ -79,6 +79,8 @@ def run_claim(record, evidence_requirements: list[dict], user_history: dict[str,
         "claim_status_justification": decision.claim_status_justification,
         "supporting_image_ids": decision.supporting_image_ids,
         "valid_image": decision.valid_image,
+        "valid_image_reason": decision.valid_image_reason,
+        "confidence": decision.confidence,
         "severity": decision.severity,
     }
 
@@ -141,5 +143,7 @@ def _fallback_row(record, error_msg: str) -> dict:
         "claim_status_justification": f"Processing error: {error_msg}",
         "supporting_image_ids": "none",
         "valid_image": "false",
+        "valid_image_reason": f"Processing error: {error_msg}",
+        "confidence": "low",
         "severity": "unknown",
     }
