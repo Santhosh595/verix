@@ -184,11 +184,20 @@ def _build_justification(
     elif parsed_claim:
         parts.append(f"User claim: '{parsed_claim.claimed_issue_summary[:80]}...' (text-based extraction).")
 
-    # 3. Evidence gate
+    # 3. Evidence gate (truncate on word boundary, never mid-word)
+    def _truncate_reason(text: str, width: int = 80) -> str:
+        """Truncate text on word boundary with ellipsis."""
+        if len(text) <= width:
+            return text
+        truncated = text[:width]
+        last_space = truncated.rfind(" ")
+        if last_space > width // 2:
+            truncated = truncated[:last_space]
+        return truncated.rstrip() + "..."
     if evidence_result.evidence_standard_met:
-        parts.append(f"Evidence standard met: {evidence_result.evidence_standard_met_reason[:60]}")
+        parts.append(f"Evidence standard met: {_truncate_reason(evidence_result.evidence_standard_met_reason)}")
     else:
-        parts.append(f"Evidence standard NOT met: {evidence_result.evidence_standard_met_reason[:60]}")
+        parts.append(f"Evidence standard NOT met: {_truncate_reason(evidence_result.evidence_standard_met_reason)}")
 
     # 4. History context (explicitly state it did NOT override)
     active_flags = risk_flags.split(";") if risk_flags and risk_flags != "none" else []
