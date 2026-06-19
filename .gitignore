@@ -1,0 +1,18 @@
+# datasets (large, excluded from code.zip submission anyway)
+dataset/*.csv
+dataset/images/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# build/cache artifacts
+code/.cache/
+code/output.csv
+*.egg-info/
+
+# node (if any tooling pulls it in)
+node_modules/

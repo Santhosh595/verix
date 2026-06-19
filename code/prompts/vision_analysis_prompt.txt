@@ -1,0 +1,40 @@
+TODO: fill in and iterate on this prompt in evaluation/compare_strategies.py.
+This is the highest-leverage prompt in the whole system -- expect to spend
+the most iteration time here.
+
+Goal: given one image (or a small batch of images for the same claim)
+plus the claim_object and the claimed_issue_summary (from
+claim_extraction_prompt.txt), report ONLY what is visible:
+  - issue_type (closed vocabulary, "none" if the relevant part looks
+    fine, "unknown" if undeterminable)
+  - object_part (closed vocabulary for this claim_object)
+  - severity, if an issue is present
+  - quality_notes: anything that hurts your ability to assess (blur,
+    glare, crop, bad angle, wrong object/part visible entirely)
+  - authenticity_notes: anything suggesting the image is edited,
+    screenshotted, or not an original photo (only flag if there's a
+    real visual reason -- don't speculate)
+  - confidence in your own read of the image
+
+Explicitly instruct the model NOT to decide claim_status -- only report
+observations. decision_engine.py owns claim_status.
+
+--- TEMPLATE TO FILL IN ---
+
+System: <reference prompts/system_prompt.txt>
+
+User (with image attached):
+Object type: {claim_object}
+What the user claims happened (for context only -- verify, don't assume):
+\"\"\"
+{claimed_issue_summary}
+\"\"\"
+
+Allowed issue_type values: {ISSUE_TYPES}
+Allowed object_part values for {claim_object}: {OBJECT_PARTS[claim_object]}
+Allowed severity values: {SEVERITIES}
+
+Respond as JSON with keys: issue_type, object_part, severity,
+quality_notes (list of short strings), authenticity_notes (list of short
+strings), confidence (0-1), description (1-2 sentences of what you
+actually see).
