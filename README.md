@@ -119,7 +119,9 @@ claim record + images + user history + evidence requirements
 
 ## Evaluation (Real Metrics)
 
-Evaluation on `dataset/sample_claims.csv`:
+Note: this is a separate, ground-truth-labeled scoring run on `dataset/sample_claims.csv` (20 claims), distinct from the full `output.csv` (44/44 claims, complete). The eval run happened after the 44-claim batch and ran into leftover free-tier rate limits — see below.
+
+Run on `dataset/sample_claims.csv` (20 claims; 5 failed on 429s from exhausted free-tier quota after the full 44-claim run — reported on the 15 that completed):
 
 - Total claims: **20**
 - After a larger 44-claim run, free-tier quota exhaustion caused 5 claims to fail (429s)
