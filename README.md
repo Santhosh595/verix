@@ -55,8 +55,9 @@ claim record + images + user history + evidence requirements
                            regex + LLM-based prompt-injection detection
         │
         ▼
-2. Vision analysis       — VLM inspects each image independently
-                           (Gemini → Groq → OpenRouter fallback chain)
+2. Vision analysis       — VLM inspects each image independently;
+                           provider picked via VLM_PROVIDER, with an
+                           automatic cross-provider fallback chain
         │
         ▼
 3. Evidence checking     — image count/quality vs. evidence_requirements.csv
@@ -108,11 +109,11 @@ claim record + images + user history + evidence requirements
 
 | Provider | Role | Notes |
 |---|---|---|
-| Groq (`llama-4-scout-17b`) | Primary | Free tier, ~10–30s/claim |
-| OpenRouter (`nex-n2-pro:free`) | Fallback | 50 req/day free tier |
+| OpenRouter (`openai/gpt-oss-120b:free`) | Primary (default) | Set via `VLM_PROVIDER` / `VLM_MODEL` in `.env` |
+| Groq (`llama-4-scout-17b`) | Fallback | Auto-used when the primary provider fails |
 
-- On rate limit/error from Groq, Verix automatically falls back to OpenRouter.
-- If both providers fail, the claim is returned as `not_enough_information` with a logged error (batch continues safely).
+- The provider is configurable: `VLM_PROVIDER` selects the primary; on rate limit/error the pipeline automatically falls back (OpenRouter → Groq, Groq → OpenRouter, Gemini → Groq).
+- If all providers fail, the claim is returned as `not_enough_information` with a logged error (batch continues safely).
 - Calls are cached by `(image_content_sha256, prompt_version, provider)` to avoid re-billing identical images on reruns.
 
 ---
@@ -151,10 +152,9 @@ For full breakdown, strategy comparison, latency/cost estimates, and limitations
 verix/
 ├── AGENTS.md, README.md, problem_statement.md
 ├── prompt/TASK_BRIEF.md
-├── dataset/
-│   ├── claims.csv, sample_claims.csv, user_history.csv
-│   ├── evidence_requirements.csv
-│   └── images/{sample,test}/
+├── dataset/             — only README.md ships; the raw CSVs + images
+│                          are NOT bundled (see dataset/README.md —
+│                          drop them in at the documented paths)
 └── code/
     ├── main.py
     ├── config/         — schema.py (column + vocab definitions), settings.py
