@@ -15,5 +15,7 @@ Suggested minimum coverage before submission:
 def test_output_columns_exact():
     from config.schema import OUTPUT_COLUMNS
     assert OUTPUT_COLUMNS[0] == "user_id"
+    assert OUTPUT_COLUMNS[4] == "evidence_standard_met"
+    assert OUTPUT_COLUMNS[5] == "evidence_standard_met_reason"
     assert OUTPUT_COLUMNS[-1] == "severity"
-    assert len(OUTPUT_COLUMNS) == 14
+    assert len(OUTPUT_COLUMNS) == 16
