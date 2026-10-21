@@ -1,5 +1,9 @@
 # Verix
 
+[![CI](https://github.com/Santhosh595/verix/actions/workflows/ci.yml/badge.svg)](https://github.com/Santhosh595/verix/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 <div align="center">
 
 ### Multi-Modal Evidence Review for Insurance Damage Claims
@@ -184,9 +188,17 @@ Output is written to `code/output.csv` and validated against the exact 16-column
 
 ### Run tests
 
+The test files live in `code/tests/`, and the suite runs from the repository
+root so that `conftest.py` can put `code/` on the import path:
+
 ```bash
-pytest tests/
+pip install -r code/requirements.txt
+pytest
 ```
+
+The suite needs no API key and no network — the provider calls are replaced
+with recording fakes. It covers the output schema, prompt-injection
+detection, and the VLM provider-fallback dispatch chain.
 
 ### Run strategy comparison
 
