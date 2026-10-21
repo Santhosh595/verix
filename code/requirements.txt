@@ -1,13 +1,21 @@
 # Core
-python-dotenv>=1.0
-pillow>=10.0
-numpy>=1.24
-openai>=1.40
-google-genai>=0.3
+#
+# Floors replaced with exact pins; the resolved tree is in requirements.lock.txt.
+# A frozen resolution of the full transitive tree is in requirements.lock.txt.
+python-dotenv==1.2.4
+pillow==12.3.0
+openai==3.22.1
+google-genai==2.26.0
+
+# numpy 2.5 requires Python >= 3.12; 2.2.6 is the newest release that
+# still supports 3.10 and 3.11. The pinned version therefore depends on
+# the interpreter running the install.
+numpy==2.5.3 ; python_version >= "3.12"
+numpy==2.2.6 ; python_version < "3.12"
 
 # Optional providers (uncomment as needed)
 # groq>=0.9
 # anthropic>=0.30
 
 # Evaluation / dev
-pytest>=8.0
+pytest==9.1.1
